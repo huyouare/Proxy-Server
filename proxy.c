@@ -27,6 +27,8 @@ void  format_log_entry(char * logstring,
 		       char * uri,
 		       int size);
 		       
+// void parseAddress(char* url, char* host, char** file, int* serverPort);
+
 void *forwarder(void* args);
 void *webTalk(void* args);
 void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int serverPort);
@@ -42,6 +44,7 @@ pthread_mutex_t mutex;
 
 int main(int argc, char *argv[])
 {
+  //TODO: count, i, hp, haddrp, tid, args
   int count = 0;
   int listenfd, connfd, clientlen, optval, serverPort, i;
   struct sockaddr_in clientaddr;
@@ -94,7 +97,7 @@ int main(int argc, char *argv[])
   
   while(1) {
 
-    clientlen = sizeof(clientaddr);
+    clientlen = sizeof(clientaddr); //struct sockaddr_in
 
     /* accept a new connection from a client here */
 
@@ -102,8 +105,54 @@ int main(int argc, char *argv[])
     
     /* you have to write the code to process this new client request */
 
+    printf("Connected\n");
+    //clientaddr
+    //clientlen
 
+    char request[512];
+    char host[512];
+    char buf[512];
+    rio_t rio;
+    count = 512;
+    Rio_readinitb(&rio, connfd);
+    Rio_readlineb(&rio, request, count);
+    Rio_readlineb(&rio, host, count);
+    printf("%s\n", request);
+    // request = 0;
+    int n;
+    // while((n = Rio_readlineb(&rio, buf, count)) != 0) {
+    //   printf("%s", buf);
+    // }
+    char *uri;
+    char *target_address;
+    char *path;
+    serverPort = 80;
+    int *port = &serverPort;
+    char *saveptr;
+
+    printf("URI1 %s\n", request);
+
+    uri = strchr(request, 'h');
+    printf("URIEND %s\n", uri);
+
+    strtok_r(uri, " ", &saveptr);
+    printf("URI2 %s\n", uri);
+
+    find_target_address(uri, target_address, path, port);
+    printf("address: %s\n", target_address);
+    printf("path: %s\n", path);
+    printf("port: %d\n", *port);
+
+    int ret;
+    pthread_t thread;
+    char *message = "Thread 1";
     /* create a new thread (or two) to process the new connection */
+
+    // if (ret = pthread_create(&thread, NULL, NULL, (void*) message)) {
+    //   printf("NOOO\n");
+    // }
+
+    //webTalk or secureTalk
 
   }
   
@@ -119,8 +168,8 @@ int main(int argc, char *argv[])
 void parseAddress(char* url, char* host, char** file, int* serverPort)
 {
 	char *point1;
-        char *point2;
-        char *saveptr;
+  char *point2;
+  char *saveptr;
 
 	if(strstr(url, "http://"))
 		url = &(url[7]);
@@ -131,13 +180,10 @@ void parseAddress(char* url, char* host, char** file, int* serverPort)
 	/* first time strtok_r is called, returns pointer to host */
 	/* strtok_r (and strtok) destroy the string that is tokenized */
 
-
 	/* get rid of everything after the first / */
-
 	strtok_r(host, "/", &saveptr);
 
 	/* now look to see if we have a colon */
-
 	point1 = strchr(host, ':');
 	if(!point1) {
 		*serverPort = 80;
@@ -179,6 +225,7 @@ void *webTalk(void* args)
   
   // Determine protocol (CONNECT or GET)
 
+
   // GET: open connection to webserver (try several times, if necessary)
 
   /* GET: Transfer first header to webserver */
@@ -208,6 +255,8 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
     serverPort = 443;
   
   /* Open connecton to webserver */
+
+
   /* clientfd is browser */
   /* serverfd is server */
   
@@ -234,6 +283,8 @@ void *forwarder(void* args)
   while(1) {
     
     /* serverfd is for talking to the web server */
+
+
     /* clientfd is for talking to the browser */
     
   }
@@ -263,46 +314,48 @@ void ignore()
 /*find_target_address - find the host name from the uri */
 int  find_target_address(char * uri, char * target_address, char * path,
                          int  * port)
-
 {
   //  printf("uri: %s\n",uri);
-  
 
-    if (strncasecmp(uri, "http://", 7) == 0) {
-	char * hostbegin, * hostend, *pathbegin;
-	int    len;
-       
-	/* find the target address */
-	hostbegin = uri+7;
-	hostend = strpbrk(hostbegin, " :/\r\n");
-	if (hostend == NULL){
-	  hostend = hostbegin + strlen(hostbegin);
-	}
-	
-	len = hostend - hostbegin;
+  if (strncasecmp(uri, "http://", 7) == 0) {
+  	char * hostbegin, * hostend, *pathbegin;
+  	int    len;
+         
+  	/* find the target address */
+  	hostbegin = uri+7;
+  	hostend = strpbrk(hostbegin, " :/\r\n");
+  	if (hostend == NULL){
+  	  hostend = hostbegin + strlen(hostbegin);
+  	}
+  	
+  	len = hostend - hostbegin;
 
-	strncpy(target_address, hostbegin, len);
-	target_address[len] = '\0';
+  	strncpy(target_address, hostbegin, len);
+  	target_address[len] = '\0';
 
-	/* find the port number */
-	if (*hostend == ':')   *port = atoi(hostend+1);
-
-	/* find the path */
-
-	pathbegin = strchr(hostbegin, '/');
-
-	if (pathbegin == NULL) {
-	  path[0] = '\0';
-	  
-	}
-	else {
-	  pathbegin++;	
-	  strcpy(path, pathbegin);
-	}
-	return 0;
+  	/* find the port number */
+  	if (*hostend == ':') {
+      *port = atoi(hostend+1);
+    } else {
+      *port = 80;
     }
-    target_address[0] = '\0';
-    return -1;
+
+  	/* find the path */
+
+  	pathbegin = strchr(hostbegin, '/');
+
+  	if (pathbegin == NULL) {
+  	  path[0] = '\0';
+  	  
+  	}
+  	else {
+  	  pathbegin++;	
+  	  strcpy(path, pathbegin);
+  	}
+  	return 0;
+  }
+  target_address[0] = '\0';
+  return -1;
 }
 
 
