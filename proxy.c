@@ -27,7 +27,7 @@ void  format_log_entry(char * logstring,
 		       char * uri,
 		       int size);
 		       
-// void parseAddress(char* url, char* host, char** file, int* serverPort);
+void parseAddress(char* url, char* host, char** file, int* serverPort);
 
 void *forwarder(void* args);
 void *webTalk(void* args);
@@ -108,49 +108,21 @@ int main(int argc, char *argv[])
     printf("Connected\n");
     //clientaddr
     //clientlen
-
-    char request[512];
-    char host[512];
-    char buf[512];
-    rio_t rio;
-    count = 512;
-    Rio_readinitb(&rio, connfd);
-    Rio_readlineb(&rio, request, count);
-    Rio_readlineb(&rio, host, count);
-    printf("%s\n", request);
-    // request = 0;
-    int n;
-    // while((n = Rio_readlineb(&rio, buf, count)) != 0) {
-    //   printf("%s", buf);
-    // }
-    char *uri;
-    char *target_address;
-    char *path;
     serverPort = 80;
-    int *port = &serverPort;
-    char *saveptr;
-
-    printf("URI1 %s\n", request);
-
-    uri = strchr(request, 'h');
-    printf("URIEND %s\n", uri);
-
-    strtok_r(uri, " ", &saveptr);
-    printf("URI2 %s\n", uri);
-
-    find_target_address(uri, target_address, path, port);
-    printf("address: %s\n", target_address);
-    printf("path: %s\n", path);
-    printf("port: %d\n", *port);
 
     int ret;
     pthread_t thread;
     char *message = "Thread 1";
     /* create a new thread (or two) to process the new connection */
 
-    // if (ret = pthread_create(&thread, NULL, NULL, (void*) message)) {
-    //   printf("NOOO\n");
-    // }
+    args[0] = connfd;
+    args[1] = serverPort;
+
+    if (ret = pthread_create(&thread, NULL, webTalk(args), (void*) message)) {
+      printf("NOOO\n");
+    }
+
+    printf("Done Thread\n");
 
     //webTalk or secureTalk
 
@@ -219,22 +191,158 @@ void *webTalk(void* args)
   
   clientfd = ((int*)args)[0];
   serverPort = ((int*)args)[1];
-  free(args);
-  
+  // free(args);
+
+  char request[MAXLINE];
+  char buf[MAXLINE];
   Rio_readinitb(&client, clientfd);
+  Rio_readlineb(&client, request, MAXLINE);
+  // Rio_readlineb(&client, host, MAXLINE);
+  printf("%s\n", request);
+  // request = 0;
+  int n;
+  // while((n = Rio_readlineb(&rio, buf, count)) != 0) {
+  //   printf("%s", buf);
+  // }
+  char *uri;
+  char target_address[MAXLINE];
+  char path[MAXLINE];
+  int *port = &serverPort;
+
+  printf("Request: %s\n", request);
+
+  uri = strchr(request, 'h');
+  printf("URIEND %s\n", uri);
+
+  strtok_r(uri, " ", &saveptr);
+  printf("URI %s\n", uri);
   
   // Determine protocol (CONNECT or GET)
+  if (request[0] == 'G') {
+    find_target_address(uri, target_address, path, port);
+    printf("address: %s\n", target_address);
+    printf("path: %s\n", path);
+    printf("port: %d\n", *port);
+    // GET: open connection to webserver (try several times, if necessary)
+    int sockfd = Socket(AF_INET, SOCK_STREAM/* use tcp */, 0);
+    /* GET: Transfer first header to webserver */
+    struct addrinfo hints;
+    struct addrinfo *res;
+    int status;
 
+    int s = Open_clientfd(target_address, *port);
+    // // int len = recv(sockfd, buf2, MAXLINE, 0);
 
-  // GET: open connection to webserver (try several times, if necessary)
+    // printf("Connected!\n");
+    // Write(sockfd, request, MAXLINE);
+    // int n;
+    // while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+    //   // if (buf1[0] != 'C') {
+    //     printf("%s", buf1);
+    //     Write(sockfd, buf1, MAXLINE);
+    //   // }
+    // }
+    // printf("Start server read\n");
+    // int len = recv(sockfd, buf2, MAXLINE, 0);
+    // buf2[len] = '\0';
+    // printf("%s\n", buf2);
 
-  /* GET: Transfer first header to webserver */
-    
-  // GET: Transfer remainder of the request
+    // while (((n = Rio_readn(sockfd, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+    //   printf("Server reading...\n");
+    //   printf("%s\n", buf1);
+    // }
 
-  // GET: now receive the response
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
 
-  // CONNECT: call a different function, securetalk, for HTTPS
+    char buffer[10];
+    sprintf(buffer, "%d", *port);
+
+    if ((status = getaddrinfo(target_address, buffer, &hints, &res)) != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        exit(1);
+    }
+
+    struct addrinfo *r;
+    r = res;
+    // for(r = res; r != NULL; r = r->ai_next) {
+      void *addr;
+      char *ipver = "IPV4";
+      struct sockaddr_in *ip = (struct sockaddr_in *)r->ai_addr;
+      addr = &(ip->sin_addr);
+      char ipstr[INET6_ADDRSTRLEN];
+      
+      inet_ntop(r->ai_family, addr, ipstr, sizeof ipstr);
+      printf("%s: %s\n", ipver, ipstr);
+
+      // int s = socket(r->ai_family, r->ai_socktype, r->ai_protocol);
+
+      // if (Connect(s, ip, sizeof(ip)) < 0) {
+      //   printf("Connection fail.\n");
+      // } else {
+        printf("Connected!\n");
+        sprintf(buf3, "GET / HTTP/1.0\nHost: google.com\nUser-Agent: HTMLGET 1.0\r\n\r\n");
+        printf("%s\n", buf3);
+        send(s, buf3, MAXLINE, 0);
+        int n;
+        // while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+        //   if (buf1[0] != 'C') {
+        //     printf("%s", buf1);
+        //     send(s, buf1, MAXLINE, 0);
+        //   }
+        // }
+        printf("Start server read\n");
+
+        int tmpres;
+        memset(buf, 0, sizeof(buf));
+        int htmlstart = 0;
+        char * htmlcontent;
+        htmlstart = 0;
+        while((tmpres = recv(s, buf, MAXLINE, 0)) > 0){
+          if(htmlstart == 0)
+          {
+            /* Under certain conditions this will not work.
+            * If the \r\n\r\n part is splitted into two messages
+            * it will fail to detect the beginning of HTML content
+            */
+            htmlcontent = strstr(buf, "\r\n\r\n");
+            if(htmlcontent != NULL){
+              htmlstart = 1;
+              htmlcontent += 4;
+            }
+          }else{
+            htmlcontent = buf;
+          }
+          if(htmlstart){
+            printf("%s\n", htmlcontent);
+          }
+        
+          memset(buf, 0, tmpres);
+        }
+        if(tmpres < 0)
+        {
+          perror("Error receiving data");
+        }
+
+        // while (Rio_readn(sockfd, buf2, MAXLINE) > 0) {
+        //   printf("Server reading...\n");
+        //   printf("%s\n", buf2);
+        // }
+
+      // }
+    // }
+
+    // GET: Transfer remainder of the request
+
+    // GET: now receive the response
+    printf("Begin GET\n");
+
+  } else {
+    // CONNECT: call a different function, securetalk, for HTTPS
+
+  }
 
 }
 
@@ -315,7 +423,6 @@ void ignore()
 int  find_target_address(char * uri, char * target_address, char * path,
                          int  * port)
 {
-  //  printf("uri: %s\n",uri);
 
   if (strncasecmp(uri, "http://", 7) == 0) {
   	char * hostbegin, * hostend, *pathbegin;
@@ -327,7 +434,7 @@ int  find_target_address(char * uri, char * target_address, char * path,
   	if (hostend == NULL){
   	  hostend = hostbegin + strlen(hostbegin);
   	}
-  	
+
   	len = hostend - hostbegin;
 
   	strncpy(target_address, hostbegin, len);
@@ -336,8 +443,6 @@ int  find_target_address(char * uri, char * target_address, char * path,
   	/* find the port number */
   	if (*hostend == ':') {
       *port = atoi(hostend+1);
-    } else {
-      *port = 80;
     }
 
   	/* find the path */
