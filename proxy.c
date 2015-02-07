@@ -97,6 +97,7 @@ int main(int argc, char *argv[])
   
   while(1) {
 
+    printf("New client\n");
     clientlen = sizeof(clientaddr); //struct sockaddr_in
 
     /* accept a new connection from a client here */
@@ -105,12 +106,9 @@ int main(int argc, char *argv[])
     
     /* you have to write the code to process this new client request */
 
-    printf("Connected\n");
-    //clientaddr
-    //clientlen
-    serverPort = 80;
+    printf("Connected to client\n");
+    serverPort = 80; // Default port
 
-    int ret;
     pthread_t thread;
     char *message = "Thread 1";
     /* create a new thread (or two) to process the new connection */
@@ -118,16 +116,16 @@ int main(int argc, char *argv[])
     args[0] = connfd;
     args[1] = serverPort;
 
-    if (ret = pthread_create(&thread, NULL, webTalk(args), (void*) message)) {
-      printf("NOOO\n");
+    if (pthread_create(&thread, NULL, webTalk(args), (void*) message) < 0) {
+      // printf("Client thread error\n");
     }
 
     printf("Done Thread\n");
-
-    //webTalk or secureTalk
-
+    printf("Done Thread\n");
   }
-  
+
+
+  printf("Exit while\n");
   if(debug) Close(debugfd);
   Close(logfd);
   pthread_mutex_destroy(&mutex);
@@ -170,7 +168,6 @@ void parseAddress(char* url, char* host, char** file, int* serverPort)
 }
 
 
-
 /* this is the function that I spawn as a thread when a new
    connection is accepted */
 
@@ -195,45 +192,36 @@ void *webTalk(void* args)
 
   char request[MAXLINE];
   char buf[MAXLINE];
+
+  /* Read first line of request */
   Rio_readinitb(&client, clientfd);
   Rio_readlineb(&client, request, MAXLINE);
-  // Rio_readlineb(&client, host, MAXLINE);
-  printf("%s\n", request);
-  // request = 0;
-  int n;
-  // while((n = Rio_readlineb(&rio, buf, count)) != 0) {
-  //   printf("%s", buf);
-  // }
+
+  printf("Request: %s", request);
+
   char *uri;
   char target_address[MAXLINE];
   char path[MAXLINE];
   int *port = &serverPort;
 
-  printf("Request: %s\n", request);
-
   uri = strchr(request, 'h');
-  printf("URIEND %s\n", uri);
 
   strtok_r(uri, " ", &saveptr);
   printf("URI %s\n", uri);
   
   // Determine protocol (CONNECT or GET)
-  if (request[0] == 'G') {
+  if (strncmp(request, "GET", 3) == 0) {
     find_target_address(uri, target_address, path, port);
     printf("address: %s\n", target_address);
     printf("path: %s\n", path);
     printf("port: %d\n", *port);
+
     // GET: open connection to webserver (try several times, if necessary)
-    int sockfd = Socket(AF_INET, SOCK_STREAM/* use tcp */, 0);
-    /* GET: Transfer first header to webserver */
-    struct addrinfo hints;
-    struct addrinfo *res;
-    int status;
 
-    int s = Open_clientfd(target_address, *port);
-    // // int len = recv(sockfd, buf2, MAXLINE, 0);
+    serverfd = Open_clientfd(target_address, *port);
 
-    // printf("Connected!\n");
+    printf("Connected!\n");
+
     // Write(sockfd, request, MAXLINE);
     // int n;
     // while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
@@ -252,98 +240,81 @@ void *webTalk(void* args)
     //   printf("%s\n", buf1);
     // }
 
-    memset(&hints, 0, sizeof hints); // make sure the struct is empty
-    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
-    hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
+    // int sockfd = Socket(AF_INET, SOCK_STREAM/* use tcp */, 0);
+    // struct addrinfo hints;
+    // struct addrinfo *res;
+    // int status;
 
-    char buffer[10];
-    sprintf(buffer, "%d", *port);
+    // memset(&hints, 0, sizeof hints);
+    // hints.ai_family = AF_UNSPEC;
+    // hints.ai_socktype = SOCK_STREAM;
+    // hints.ai_flags = AI_PASSIVE;
 
-    if ((status = getaddrinfo(target_address, buffer, &hints, &res)) != 0) {
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-        exit(1);
-    }
+    // char buffer[10];
+    // sprintf(buffer, "%d", *port);
 
-    struct addrinfo *r;
-    r = res;
+    // if ((status = getaddrinfo(target_address, buffer, &hints, &res)) != 0) {
+    //     fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+    //     exit(1);
+    // }
+
+    // struct addrinfo *r;
+    // r = res;
     // for(r = res; r != NULL; r = r->ai_next) {
-      void *addr;
-      char *ipver = "IPV4";
-      struct sockaddr_in *ip = (struct sockaddr_in *)r->ai_addr;
-      addr = &(ip->sin_addr);
-      char ipstr[INET6_ADDRSTRLEN];
+    //   void *addr;
+    //   char *ipver = "IPV4";
+    //   struct sockaddr_in *ip = (struct sockaddr_in *)r->ai_addr;
+    //   addr = &(ip->sin_addr);
+    //   char ipstr[INET6_ADDRSTRLEN];
       
-      inet_ntop(r->ai_family, addr, ipstr, sizeof ipstr);
-      printf("%s: %s\n", ipver, ipstr);
+    //   inet_ntop(r->ai_family, addr, ipstr, sizeof ipstr);
+    //   printf("%s: %s\n", ipver, ipstr);
 
       // int s = socket(r->ai_family, r->ai_socktype, r->ai_protocol);
 
       // if (Connect(s, ip, sizeof(ip)) < 0) {
       //   printf("Connection fail.\n");
       // } else {
-        printf("Connected!\n");
-        sprintf(buf3, "GET / HTTP/1.0\nHost: google.com\nUser-Agent: HTMLGET 1.0\r\n\r\n");
-        printf("%s\n", buf3);
-        send(s, buf3, MAXLINE, 0);
-        int n;
-        // while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
-        //   if (buf1[0] != 'C') {
-        //     printf("%s", buf1);
-        //     send(s, buf1, MAXLINE, 0);
-        //   }
-        // }
-        printf("Start server read\n");
 
-        int tmpres;
-        memset(buf, 0, sizeof(buf));
-        int htmlstart = 0;
-        char * htmlcontent;
-        htmlstart = 0;
-        while((tmpres = recv(s, buf, MAXLINE, 0)) > 0){
-          if(htmlstart == 0)
-          {
-            /* Under certain conditions this will not work.
-            * If the \r\n\r\n part is splitted into two messages
-            * it will fail to detect the beginning of HTML content
-            */
-            htmlcontent = strstr(buf, "\r\n\r\n");
-            if(htmlcontent != NULL){
-              htmlstart = 1;
-              htmlcontent += 4;
-            }
-          }else{
-            htmlcontent = buf;
-          }
-          if(htmlstart){
-            printf("%s\n", htmlcontent);
-          }
-        
-          memset(buf, 0, tmpres);
-        }
-        if(tmpres < 0)
-        {
-          perror("Error receiving data");
-        }
+    /* GET: Transfer first header to webserver */
 
-        // while (Rio_readn(sockfd, buf2, MAXLINE) > 0) {
-        //   printf("Server reading...\n");
-        //   printf("%s\n", buf2);
-        // }
+    // TODO: Switch to HTTP/1.0, Connection closed
 
-      // }
-    // }
+    send(serverfd, request, MAXLINE, 0);
+    send(serverfd, "\r\n", MAXLINE, 0);
+    printf("%s", request);
+
+    // char host[MAXLINE];
+    // Rio_readlineb(&client, host, MAXLINE);
+    // printf("%s", host);
+    // send(serverfd, host, MAXLINE, 0);
+    // send(serverfd, "\r\n\r\n", MAXLINE, 0);
+    // int n;
 
     // GET: Transfer remainder of the request
+    int n;
+    while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+      if (buf1[0] != 'C') {
+        printf("%s", buf1);
+        send(serverfd, buf1, MAXLINE, 0);
+        send(serverfd, "\r\n", MAXLINE, 0);
+      }
+    }
+    send(serverfd, "\r\n\r\n", MAXLINE, 0);
 
     // GET: now receive the response
     printf("Begin GET\n");
+    int argsF[2];
+    argsF[0] = clientfd;
+    argsF[1] = serverfd;
+    printf("Call forwarder\n");
+    forwarder(argsF);
 
   } else {
     // CONNECT: call a different function, securetalk, for HTTPS
 
   }
-
+  return (void *)args;
 }
 
 
@@ -383,16 +354,50 @@ void *forwarder(void* args)
 {
   int numBytes, lineNum, serverfd, clientfd;
   int byteCount = 0;
-  char buf1[MAXLINE];
+  char buf[MAXLINE];
   clientfd = ((int*)args)[0];
   serverfd = ((int*)args)[1];
-  free(args);
+  // free(args);
+
+  printf("Start server read\n");
+
+  
+
+
 
   while(1) {
     
     /* serverfd is for talking to the web server */
-
-
+    int tmpres;
+    memset(buf, 0, sizeof(buf));
+    int htmlstart = 0;
+    char * htmlcontent;
+    htmlstart = 0;
+    while((tmpres = recv(serverfd, buf, MAXLINE, 0)) > 0){
+      if(htmlstart == 0)
+      {
+        /* Under certain conditions this will not work.
+        * If the \r\n\r\n part is splitted into two messages
+        * it will fail to detect the beginning of HTML content
+        */
+        htmlcontent = strstr(buf, "\r\n\r\n");
+        if(htmlcontent != NULL){
+          htmlstart = 1;
+          htmlcontent += 4;
+        }
+      }else{
+        htmlcontent = buf;
+      }
+      if(htmlstart){
+        Rio_writen(clientfd, htmlcontent, MAXLINE);
+      }
+    
+      memset(buf, 0, tmpres);
+    }
+    // if(tmpres < 0)
+    // {
+    //   perror("Error receiving data");
+    // }
     /* clientfd is for talking to the browser */
     
   }
