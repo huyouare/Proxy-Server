@@ -30,6 +30,7 @@ void  format_log_entry(char * logstring,
 void parseAddress(char* url, char* host, char** file, int* serverPort);
 
 void *forwarder(void* args);
+void *forwarder_secure(void* args);
 void *webTalk(void* args);
 void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int serverPort);
 void ignore();
@@ -263,7 +264,7 @@ void *webTalk(void* args)
     char *message = "Thread 1";
 
     if (pthread_create(&thread, NULL, &forwarder, argsF) < 0) {
-      // printf("Client thread error\n");
+      printf("Fowarder thread error\n");
     }
 
   } else {
@@ -311,11 +312,11 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
   int *argsF = malloc(2 * sizeof(argsF));
   argsF[0] = clientfd;
   argsF[1] = serverfd;
-  printf("Call forwarder\n");
+  printf("Call forwarder_secure\n");
 
   pthread_t thread;
 
-  if (pthread_create(&thread, NULL, &forwarder, argsF) < 0) {
+  if (pthread_create(&thread, NULL, &forwarder_secure, argsF) < 0) {
     printf("secureTalk thread error\n");
   }
   /* now pass bytes from client to server */
@@ -335,65 +336,46 @@ void *forwarder(void* args)
 
   printf("\nStart server read\n");
 
-  int i = 0;
   while(Rio_readp(serverfd, buf, MAXLINE) > 0) {
       Rio_writen(clientfd, buf, strlen(buf));
-      // printf("%s\n", buf);
+      memset(buf, 0, sizeof(buf));
+      printf("%s\n", buf);
   }
   Close(serverfd);
   Close(clientfd);
-  // while(Rio_readp(clientfd, buf, MAXLINE) >= 0)
-  //     Rio_writep(serverfd, buf, MAXLINE);
 
-    // i++;
-    // /* serverfd is for talking to the web server */
-    // int tmpres;
-    // memset(buf, 0, sizeof(buf));
-    // int htmlstart = 0;
-    // char * htmlcontent;
-    // htmlstart = 0;
-    // while((tmpres = recv(serverfd, buf, MAXLINE, 0)) > 0){
-    //   if(htmlstart == 0)
-    //   {
-    //     /* Under certain conditions this will not work.
-    //     * If the \r\n\r\n part is splitted into two messages
-    //     * it will fail to detect the beginning of HTML content
-    //     */
-    //     htmlcontent = strstr(buf, "\r\n\r\n");
-    //     if(htmlcontent != NULL){
-    //       htmlstart = 1;
-    //       htmlcontent += 4;
-    //     }
-    //   }else{
-    //     htmlcontent = buf;
-    //   }
-    //   if(htmlstart){
-    //     Rio_writen(clientfd, htmlcontent, MAXLINE);
-    //     printf("%s\n", htmlcontent);
-    //   }
-    
-    //   memset(buf, 0, tmpres);
+  return args;
+}
+
+void *forwarder_secure(void* args)
+{
+  int numBytes, lineNum, serverfd, clientfd;
+  int byteCount = 0;
+  int numBytes1 = 1;
+  int numBytes2 = 1;
+  char buf[MAXLINE], buf1[MAXLINE], buf2[MAXLINE];
+  clientfd = ((int*)args)[0];
+  serverfd = ((int*)args)[1];
+  // free(args);
+
+  printf("\nStart server read\n");
+
+  while (numBytes1 > 0) {
+    numBytes1 = Rio_readn(serverfd, buf1, MAXLINE);
+    // numBytes2 = Rio_readp(clientfd, buf2, MAXLINE);
+    if (numBytes1 > 0) {
+        Rio_writen(clientfd, buf1, strlen(buf1));
+        printf("Server: %s\n", buf1);
+    }
+    // else if (numBytes2 > 0) {
+    //     Rio_writen(serverfd, buf2, strlen(buf2));
+    //     printf("Client: %s\n", buf2);
     // }
-    // Rio_writen(clientfd, "\r\n", MAXLINE);
-    // printf("Finish server\n");
-    // // if(tmpres < 0)
-    // // {
-    // //   perror("Error receiving data");
-    // // }
-    // /* clientfd is for talking to the browser */
-    // // printf("Finished reading server\n\n");
-    // // printf("Begin sending client request\n");
-    // // GET: Transfer remainder of the request
-    // int n;
-    // while (((n = Rio_readn(clientfd, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
-    //   if (buf1[0] != 'C') {
-    //     printf("%s", buf1);
-    //     send(serverfd, buf1, MAXLINE, 0);
-    //     send(serverfd, "\r\n", MAXLINE, 0);
-    //   }
-    // }
-    // send(serverfd, "\r\n\r\n", MAXLINE, 0);
-    // // printf("Finish sending client request\n");
+  }
+  printf("End server read\n");
+  Close(serverfd);
+  Close(clientfd);
+
   return args;
 }
 
