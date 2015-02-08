@@ -207,17 +207,18 @@ void *webTalk(void* args)
   char request_copy[MAXLINE];
 
   strcpy(request_copy, request);
-  uri = strchr(request, 'h');
-
+  uri = strchr(request, ' ');
+  ++uri;
   strtok_r(uri, " ", &saveptr);
   printf("URI %s\n", uri);
+
+  find_target_address(uri, target_address, path, port);
+  printf("address: %s\n", target_address);
+  printf("path: %s\n", path);
+  printf("port: %d\n", *port);
   
   // Determine protocol (CONNECT or GET)
   if (strncmp(request, "GET", 3) == 0) {
-    find_target_address(uri, target_address, path, port);
-    printf("address: %s\n", target_address);
-    printf("path: %s\n", path);
-    printf("port: %d\n", *port);
 
     // GET: open connection to webserver (try several times, if necessary)
 
@@ -240,7 +241,10 @@ void *webTalk(void* args)
     int n;
     while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
       // TODO: Connection closed
-      if (buf1[0] != 'C') {
+      if (strncmp(buf1, "Con", 3) == 0) {
+        printf("%s", "Connection: close\n");
+        send(serverfd, "Connection: close\n", MAXLINE, 0);
+      } else {
         printf("%s", buf1);
         send(serverfd, buf1, MAXLINE, 0);
         send(serverfd, "\n", MAXLINE, 0);
@@ -264,9 +268,10 @@ void *webTalk(void* args)
 
   } else {
     // CONNECT: call a different function, securetalk, for HTTPS
+    *port = 443;
     printf("Caling secureTalk\n");
     char inHost[MAXLINE], version[MAXLINE];
-    secureTalk(clientfd, client, &inHost, &version, *port);
+    secureTalk(clientfd, client, target_address, version, *port);
   }
   return (void *)args;
 }
@@ -287,17 +292,32 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
   if (serverPort == proxyPort)
     serverPort = 443;
   
+  printf("%s\n", inHost);
+  printf("%d\n", serverPort);
+
   /* Open connecton to webserver */
-  serverfd = Open_clientfd(target_address, *port);
+  serverfd = Open_clientfd(inHost, serverPort);
   printf("Connected in secureTalk\n");
 
   /* clientfd is browser */
   /* serverfd is server */
   
   /* let the client know we've connected to the server */
-
+  char msg[MAXLINE];
+  strcpy(msg, "HTTP/1.1 200 OK\r\n\r\n");
+  Rio_writen(clientfd, msg, strlen(msg));
   /* spawn a thread to pass bytes from origin server through to client */
+  printf("Begin CONNECT\n");
+  int *argsF = malloc(2 * sizeof(argsF));
+  argsF[0] = clientfd;
+  argsF[1] = serverfd;
+  printf("Call forwarder\n");
 
+  pthread_t thread;
+
+  if (pthread_create(&thread, NULL, &forwarder, argsF) < 0) {
+    printf("secureTalk thread error\n");
+  }
   /* now pass bytes from client to server */
 
 }
@@ -374,6 +394,7 @@ void *forwarder(void* args)
     // }
     // send(serverfd, "\r\n\r\n", MAXLINE, 0);
     // // printf("Finish sending client request\n");
+  return args;
 }
 
 
@@ -402,12 +423,18 @@ int  find_target_address(char * uri, char * target_address, char * path,
                          int  * port)
 {
 
-  if (strncasecmp(uri, "http://", 7) == 0) {
+  // if (strncasecmp(uri, "http://", 7) == 0 || strncasecmp(uri, "https://", 8) == 0) {
   	char * hostbegin, * hostend, *pathbegin;
   	int    len;
          
   	/* find the target address */
-  	hostbegin = uri+7;
+  	if (strncasecmp(uri, "http://", 7) == 0) {
+      hostbegin = uri+7;
+    } else if (strncasecmp(uri, "https://", 8) == 0) {
+      hostbegin = uri+8;
+    } else {
+      hostbegin = uri;
+    }
   	hostend = strpbrk(hostbegin, " :/\r\n");
   	if (hostend == NULL){
   	  hostend = hostbegin + strlen(hostbegin);
@@ -436,9 +463,9 @@ int  find_target_address(char * uri, char * target_address, char * path,
   	  strcpy(path, pathbegin);
   	}
   	return 0;
-  }
-  target_address[0] = '\0';
-  return -1;
+  // }
+  // target_address[0] = '\0';
+  // return -1;
 }
 
 
