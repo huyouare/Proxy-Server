@@ -262,9 +262,7 @@ void *webTalk(void* args)
     pthread_t thread;
     char *message = "Thread 1";
     // forwarder(argsF);
-    if (pthread_create(&thread, NULL, &forwarder, argsF) < 0) {
-      printf("Fowarder thread error\n");
-    }
+    forwarder(argsF);
   } 
   else if (strncmp(request, "CONNECT", 7) == 0) {
     // CONNECT: call a different function, securetalk, for HTTPS
