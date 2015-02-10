@@ -118,16 +118,13 @@ int main(int argc, char *argv[])
     args[1] = serverPort;
 
     if (pthread_create(&thread, NULL, &webTalk, args) < 0) {
-      // printf("Client thread error\n");
+      printf("webTalk thread error\n");
     }
     // pthread_detach(&thread);
-    // Close(connfd);
 
     printf("Done Thread\n");
   }
 
-
-  printf("Exit while\n");
   if(debug) Close(debugfd);
   Close(logfd);
   pthread_mutex_destroy(&mutex);
@@ -197,7 +194,12 @@ void *webTalk(void* args)
 
   /* Read first line of request */
   Rio_readinitb(&client, clientfd);
-  Rio_readlineb(&client, request, MAXLINE);
+  numBytes = Rio_readlineb(&client, request, MAXLINE);
+
+  if (numBytes <= 0) {
+    printf("No request received\n");
+    return NULL;
+  }
 
   printf("Request: %s", request);
 
@@ -222,8 +224,11 @@ void *webTalk(void* args)
   if (strncmp(request, "GET", 3) == 0) {
 
     // GET: open connection to webserver (try several times, if necessary)
+    int i = 0;
+    do {
+      serverfd = Open_clientfd(target_address, *port);
+    } while (serverfd < 0 && i < 5); // Max 5 times
 
-    serverfd = Open_clientfd(target_address, *port);
     printf("Connected!\n");
 
     /* GET: Transfer first header to webserver */
@@ -231,21 +236,13 @@ void *webTalk(void* args)
     send(serverfd, "\n", MAXLINE, 0);
     printf("%s HTTP/1.0\n", request);
 
-    // char host[MAXLINE];
-    // Rio_readlineb(&client, host, MAXLINE);
-    // printf("%s", host);
-    // send(serverfd, host, MAXLINE, 0);
-    // send(serverfd, "\r\n\r\n", MAXLINE, 0);
-    // int n;
-
     // GET: Transfer remainder of the request
-    int n;
-    while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+    while (((Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
       // TODO: Connection closed
-      if (strncmp(buf1, "Con", 3) == 0) {
+      if (strncmp(buf1, "Connection", 10) == 0) {
         printf("%s", "Connection: close\n");
         // send(serverfd, "Connection: close\n", MAXLINE, 0);
-      } else if (strncmp(buf1, "Prox", 4) == 0) {
+      } else if (strncmp(buf1, "Proxy", 5) == 0) {
         // Do nothing
       } else {
         printf("%s", buf1);
@@ -267,25 +264,26 @@ void *webTalk(void* args)
     // forwarder(argsF);
     if (pthread_create(&thread, NULL, &forwarder, argsF) < 0) {
       printf("Fowarder thread error\n");
-    } else {
-      // shutdown(serverfd, 1);
     }
-
   } 
-  else {
+  else if (strncmp(request, "CONNECT", 7) == 0) {
     // CONNECT: call a different function, securetalk, for HTTPS
     
     /* CONNECT: Transfer first header to webserver */
     send(serverfd, request, MAXLINE, 0);
-    send(serverfd, "HTTP/1.1 \n", MAXLINE, 0);
-    printf("%s HTTP/1.1\n", request);
+    send(serverfd, "HTTP/1.0 \n", MAXLINE, 0);
+    printf("%s HTTP/1.0\n", request);
 
-    *port = 443;
+    if (*port == NULL) {
+      *port = 443;
+    }
     printf("Caling secureTalk\n");
     char inHost[MAXLINE], version[MAXLINE];
     secureTalk(clientfd, client, target_address, version, *port);
+  } else {
+    printf("Request type not yet supported\n");
   }
-  return (void *)args;
+  return 0;
 }
 
 
@@ -305,25 +303,28 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
     serverPort = 443;
 
   /* Open connecton to webserver */
-  serverfd = Open_clientfd(inHost, serverPort);
+  int i = 0;
+  do {
+    serverfd = Open_clientfd(inHost, serverPort);
+  } while (serverfd < 0 && i < 5); // Max connections
   printf("Connected in secureTalk\n");
 
   // CONNECT: Transfer remainder of the request
-  int n;
-  while (((n = Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
-    // TODO: Connection closed
-    if (strncmp(buf1, "Con", 3) == 0) {
-      printf("%s", "Connection: close\n");
-      // send(serverfd, "Connection: close\n", MAXLINE, 0);
-    } else if (strncmp(buf1, "Prox", 4) == 0) {
-      // Do nothing
-    } else {
-      printf("%s", buf1);
-      send(serverfd, buf1, MAXLINE, 0);
-      send(serverfd, "\n", MAXLINE, 0);
-    }
-  }
-  send(serverfd, "\r\n\r\n", MAXLINE, 0);
+  Rio_readinitb(&client, clientfd);
+  // while (((Rio_readlineb(&client, buf1, MAXLINE)) > 0) && (buf1[0] != '\r')) {
+  //   // TODO: Connection closed
+  //   if (strncmp(buf1, "Con", 3) == 0) {
+  //     printf("%s", "Connection: close\n");
+  //     // send(serverfd, "Connection: close\n", MAXLINE, 0);
+  //   } else if (strncmp(buf1, "Prox", 4) == 0) {
+  //     // Do nothing
+  //   } else {
+  //     printf("%s", buf1);
+  //     send(serverfd, buf1, MAXLINE, 0);
+  //     send(serverfd, "\n", MAXLINE, 0);
+  //   }
+  // }
+  // send(serverfd, "\r\n\r\n", MAXLINE, 0);
 
   /* clientfd is browser */
   /* serverfd is server */
@@ -337,7 +338,7 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
   int *argsF = malloc(2 * sizeof(argsF));
   argsF[0] = clientfd;
   argsF[1] = serverfd;
-  printf("Call forwarder_secure\n");
+  printf("Call forwarder\n");
 
   pthread_t thread;
 
@@ -346,19 +347,13 @@ void secureTalk(int clientfd, rio_t client, char *inHost, char *version, int ser
   }
   /* now pass bytes from client to server */
 
-  while (1) {
-        numBytes1 = Rio_readp(clientfd, buf1, MAXLINE);
-        if (numBytes1 <= 0) {
-          /* EOF - quit connection */
-          break;
-        }
-        numBytes2 = Rio_writen(serverfd, buf1, numBytes1);
-        if (numBytes1 != numBytes2) {
-          /* did not write correct number of bytes */
-          printf("Did not send correct number of bytes to server.");
-          break;
-        }
-      }
+  do {
+    numBytes1 = Rio_readp(clientfd, buf1, MAXLINE);
+    numBytes2 = Rio_writen(serverfd, buf1, numBytes1);
+    if (numBytes1 != numBytes2) {
+      printf("INCORRECT WRITE");
+    }
+  } while (numBytes1 > 0 || numBytes2 > 0);
   shutdown(serverfd, 1);
 
   Pthread_join(thread, NULL);
@@ -377,22 +372,17 @@ void *forwarder(void* args)
 
   printf("\nStart server read\n");
 
-  while (1) {
-      numBytes = Rio_readp(serverfd, buf1, MAXLINE);
-      if (numBytes <= 0) {
-        /* EOF - quit connection */
-        break;
-      }
-      byteCount = Rio_writen(clientfd, buf1, numBytes);
-      if (numBytes != byteCount) {
-        /* did not write correct number of bytes */
-        printf("Did not send correct number of bytes to client.");
-        break;
-      }
+  do {
+    numBytes = Rio_readp(serverfd, buf1, MAXLINE);
+    byteCount = Rio_writen(clientfd, buf1, numBytes);
+    if (numBytes != byteCount) {
+      printf("INCORRECT WRITE");
     }
+  } while (numBytes > 0 || byteCount > 0);
+
   shutdown(clientfd, 1);
 
-  return args;
+  return 0;
 }
 
 void *forwarder_secure(void* args)
@@ -422,7 +412,7 @@ void *forwarder_secure(void* args)
   }
   printf("End server read\n");
 
-  return args;
+  return 0;
 }
 
 
